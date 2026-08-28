@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
@@ -19,7 +20,10 @@ const porta = Number(process.env.PORT ?? 3100);
 app.set('trust proxy', 1);
 app.use('/api', criarRotasPix());
 
-const dist = path.resolve(raiz, '..', 'dist');
+// O bundle de produção (`npm run build`) fica na raiz do projeto, ao lado do
+// `dist/`; rodando pelo fonte, este arquivo está um nível abaixo, em `server/`.
+const dist = [path.resolve(raiz, 'dist'), path.resolve(raiz, '..', 'dist')]
+  .find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, '..', 'dist');
 app.use(express.static(dist));
 app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 
