@@ -1,0 +1,303 @@
+// server/index.ts
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import "dotenv/config";
+import express2 from "express";
+
+// server/rotasPix.ts
+import crypto from "node:crypto";
+import express, { Router } from "express";
+
+// server/pixgo.ts
+var BASE = "https://pixgo.org/api/v1";
+var VALOR_MINIMO = 10;
+var VALOR_MAXIMO = 6e3;
+var ErroPixGo = class extends Error {
+  constructor(status, codigo, mensagem) {
+    super(mensagem);
+    this.status = status;
+    this.codigo = codigo;
+    this.name = "ErroPixGo";
+  }
+};
+function chave() {
+  const k = process.env.PIXGO_API_KEY;
+  if (!k) {
+    throw new ErroPixGo(
+      503,
+      "SEM_CHAVE",
+      "PIXGO_API_KEY n\xE3o configurada. Copie .env.example para .env e preencha com a chave do dashboard da PixGo."
+    );
+  }
+  return k;
+}
+async function chamar(caminho, init) {
+  const resp = await fetch(`${BASE}${caminho}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": chave(),
+      ...init?.headers ?? {}
+    }
+  });
+  const texto = await resp.text();
+  let corpo = null;
+  try {
+    corpo = texto ? JSON.parse(texto) : null;
+  } catch {
+    throw new ErroPixGo(502, "RESPOSTA_INVALIDA", `A PixGo respondeu ${resp.status} em formato inesperado.`);
+  }
+  if (!resp.ok && resp.status !== 410) {
+    throw new ErroPixGo(
+      resp.status,
+      corpo?.error ?? "ERRO_PIXGO",
+      corpo?.message ?? `A PixGo respondeu ${resp.status}.`
+    );
+  }
+  return { dados: corpo?.data, http: resp.status };
+}
+async function criarCobranca(dados) {
+  try {
+    const { dados: criada } = await chamar("/payment/create", {
+      method: "POST",
+      body: JSON.stringify(dados)
+    });
+    return criada;
+  } catch (e) {
+    const recusaDeCampo = e instanceof ErroPixGo && e.status === 400 && /cpf|obrigat|required|missing|field/i.test(e.message);
+    if (!recusaDeCampo) throw e;
+    const { receiver_cpf, receiver_name, receiver_email, receiver_phone, ...resto } = dados;
+    const { dados: criada } = await chamar("/payment/create", {
+      method: "POST",
+      body: JSON.stringify({
+        ...resto,
+        customer_cpf: receiver_cpf,
+        customer_name: receiver_name,
+        customer_email: receiver_email,
+        customer_phone: receiver_phone
+      })
+    });
+    return criada;
+  }
+}
+async function consultarStatus(paymentId) {
+  const { dados } = await chamar(`/payment/${encodeURIComponent(paymentId)}/status`);
+  return dados;
+}
+async function consultarDetalhes(paymentId) {
+  const { dados } = await chamar(`/payment/${encodeURIComponent(paymentId)}`);
+  return dados;
+}
+function ehFinal(status) {
+  return status !== "pending";
+}
+
+// server/rotasPix.ts
+var registros = /* @__PURE__ */ new Map();
+function documentoValido(doc) {
+  const d = doc.replace(/\D/g, "");
+  if (d.length === 11) {
+    if (/^(\d)\1{10}$/.test(d)) return false;
+    for (const [ate, pos] of [[9, 10], [10, 11]]) {
+      let soma = 0;
+      for (let i = 0; i < ate; i++) soma += Number(d[i]) * (pos - i);
+      const dv = soma * 10 % 11 % 10;
+      if (dv !== Number(d[ate])) return false;
+    }
+    return true;
+  }
+  if (d.length === 14) {
+    if (/^(\d)\1{13}$/.test(d)) return false;
+    const pesos = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    for (const ate of [12, 13]) {
+      const p = pesos.slice(pesos.length - ate);
+      let soma = 0;
+      for (let i = 0; i < ate; i++) soma += Number(d[i]) * p[i];
+      const resto = soma % 11;
+      const dv = resto < 2 ? 0 : 11 - resto;
+      if (dv !== Number(d[ate])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+var TETO_CAMPANHA = 1e3;
+var VALOR_MAXIMO_DOACAO = Math.min(VALOR_MAXIMO, TETO_CAMPANHA);
+var janelas = /* @__PURE__ */ new Map();
+var LIMITE = 12;
+var JANELA_MS = 10 * 60 * 1e3;
+function passouDoLimite(ip) {
+  const agora = Date.now();
+  const recentes = (janelas.get(ip) ?? []).filter((t) => agora - t < JANELA_MS);
+  recentes.push(agora);
+  janelas.set(ip, recentes);
+  return recentes.length > LIMITE;
+}
+function responderErro(res, e) {
+  if (e instanceof ErroPixGo) {
+    res.status(e.status === 503 ? 503 : 502).json({ erro: e.codigo, mensagem: e.message });
+    return;
+  }
+  console.error("[pix] falha inesperada:", e);
+  res.status(500).json({ erro: "FALHA", mensagem: "N\xE3o foi poss\xEDvel falar com o provedor de pagamento." });
+}
+function criarRotasPix() {
+  const rotas = Router();
+  rotas.post("/pix/webhook", express.text({ type: "*/*", limit: "256kb" }), (req, res) => {
+    const segredo = process.env.PIXGO_WEBHOOK_SECRET;
+    const bruto = typeof req.body === "string" ? req.body : "";
+    const assinatura = String(req.header("x-webhook-signature") ?? "");
+    const timestamp = String(req.header("x-webhook-timestamp") ?? "");
+    if (segredo) {
+      const esperada = crypto.createHmac("sha256", segredo).update(`${timestamp}.${bruto}`).digest("hex");
+      const a = Buffer.from(esperada, "hex");
+      const b = Buffer.from(assinatura, "hex");
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        res.status(401).json({ erro: "ASSINATURA_INVALIDA" });
+        return;
+      }
+      if (Math.abs(Date.now() / 1e3 - Number(timestamp)) > 300) {
+        res.status(401).json({ erro: "TIMESTAMP_EXPIRADO" });
+        return;
+      }
+    } else {
+      console.warn("[pix] webhook recebido sem PIXGO_WEBHOOK_SECRET configurado \u2014 assinatura n\xE3o conferida.");
+    }
+    try {
+      const evento = JSON.parse(bruto || "{}");
+      const paymentId = evento?.data?.payment_id;
+      const status = evento?.data?.status;
+      if (paymentId) {
+        const reg = registros.get(paymentId);
+        if (reg && status) {
+          reg.status = status;
+          reg.confirmadoPeloWebhook = true;
+        }
+        console.log(`[pix] webhook ${evento?.event} para ${paymentId} (${status})`);
+      }
+    } catch {
+      res.status(400).json({ erro: "PAYLOAD_INVALIDO" });
+      return;
+    }
+    res.status(200).json({ received: true });
+  });
+  rotas.use(express.json({ limit: "64kb" }));
+  rotas.post("/pix/cobranca", async (req, res) => {
+    const ip = req.ip ?? "desconhecido";
+    if (passouDoLimite(ip)) {
+      res.status(429).json({ erro: "MUITAS_TENTATIVAS", mensagem: "Muitas cobran\xE7as seguidas. Espere alguns minutos." });
+      return;
+    }
+    const valor = Number(req.body?.valor);
+    const cpf = String(req.body?.cpf ?? "").replace(/\D/g, "");
+    const nome = String(req.body?.nome ?? "").trim();
+    const email = String(req.body?.email ?? "").trim();
+    const campanha = String(req.body?.campanha ?? "").slice(0, 20).replace(/[^\w-]/g, "");
+    if (!Number.isFinite(valor) || valor < VALOR_MINIMO || valor > VALOR_MAXIMO_DOACAO) {
+      res.status(400).json({
+        erro: "VALOR_INVALIDO",
+        mensagem: `O valor precisa ficar entre R$ ${VALOR_MINIMO} e R$ ${VALOR_MAXIMO_DOACAO.toLocaleString("pt-BR")}.`
+      });
+      return;
+    }
+    if (!documentoValido(cpf)) {
+      res.status(400).json({ erro: "CPF_INVALIDO", mensagem: "Informe um CPF ou CNPJ v\xE1lido." });
+      return;
+    }
+    if (nome.length > 0 && (nome.length < 2 || nome.length > 100)) {
+      res.status(400).json({ erro: "NOME_INVALIDO", mensagem: "O nome deve ter de 2 a 100 caracteres." });
+      return;
+    }
+    const externalId = `vk-${campanha || "campanha"}-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`.slice(0, 50);
+    try {
+      const cobranca = await criarCobranca({
+        amount: Number(valor.toFixed(2)),
+        description: `Doa\xE7\xE3o para a vaquinha ${campanha || ""}`.trim().slice(0, 200),
+        receiver_cpf: cpf,
+        receiver_name: nome || void 0,
+        receiver_email: email || void 0,
+        external_id: externalId,
+        webhook_url: process.env.PIXGO_WEBHOOK_URL || void 0
+      });
+      registros.set(cobranca.payment_id, {
+        paymentId: cobranca.payment_id,
+        externalId,
+        valor,
+        status: cobranca.status,
+        criadoEm: Date.now(),
+        confirmadoPeloWebhook: false
+      });
+      res.status(201).json({
+        paymentId: cobranca.payment_id,
+        valor: cobranca.amount,
+        status: cobranca.status,
+        copiaECola: cobranca.qr_code,
+        imagemQr: cobranca.qr_image_url,
+        expiraEm: cobranca.expires_at
+      });
+    } catch (e) {
+      responderErro(res, e);
+    }
+  });
+  rotas.get("/pix/cobranca/:id/dados", async (req, res) => {
+    try {
+      const d = await consultarDetalhes(req.params.id);
+      res.json({
+        paymentId: d.payment_id,
+        valor: d.amount,
+        status: d.status,
+        copiaECola: d.qr_code,
+        imagemQr: d.qr_image_url,
+        expiraEm: d.expires_at
+      });
+    } catch (e) {
+      responderErro(res, e);
+    }
+  });
+  rotas.get("/pix/cobranca/:id", async (req, res) => {
+    const id = req.params.id;
+    const reg = registros.get(id);
+    if (reg?.confirmadoPeloWebhook && ehFinal(reg.status)) {
+      res.json({ paymentId: id, status: reg.status, valor: reg.valor, via: "webhook" });
+      return;
+    }
+    try {
+      const status = await consultarStatus(id);
+      if (reg) reg.status = status.status;
+      res.json({
+        paymentId: status.payment_id,
+        status: status.status,
+        valor: status.amount,
+        pagador: status.customer_name ?? null,
+        via: "consulta"
+      });
+    } catch (e) {
+      responderErro(res, e);
+    }
+  });
+  rotas.get("/pix/config", (_req, res) => {
+    res.json({
+      configurado: Boolean(process.env.PIXGO_API_KEY),
+      valorMinimo: VALOR_MINIMO,
+      valorMaximo: VALOR_MAXIMO_DOACAO
+    });
+  });
+  return rotas;
+}
+
+// server/index.ts
+var raiz = path.dirname(fileURLToPath(import.meta.url));
+var app = express2();
+var porta = Number(process.env.PORT ?? 3100);
+app.set("trust proxy", 1);
+app.use("/api", criarRotasPix());
+var dist = [path.resolve(raiz, "dist"), path.resolve(raiz, "..", "dist")].find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, "..", "dist");
+app.use(express2.static(dist));
+app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+app.listen(porta, () => {
+  console.log(`Vakinha no ar em http://localhost:${porta}`);
+  if (!process.env.PIXGO_API_KEY) {
+    console.warn('Sem PIXGO_API_KEY: o bot\xE3o "Quero Ajudar" abre o modal, mas n\xE3o gera cobran\xE7a.');
+  }
+});
