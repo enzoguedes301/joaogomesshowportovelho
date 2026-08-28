@@ -1,5 +1,5 @@
 
-## Doação por PIX (PixGo)
+ PIX (PixGo)
 
 O botão "Quero Ajudar" abre o fluxo de doação: valor → CPF → QR Code → confirmação.
 A cobrança é criada pela [API da PixGo](https://pixgo.org/api/v1/docs?lang=pt).
