@@ -168,8 +168,8 @@ export const sampleBadges: BadgeItem[] = [
   },
   {
     id: 'b2',
-    title: 'Laudo Veterinário Validado',
-    description: 'Relatório da clínica que atende a Pandora verificado por auditoria de segurança.',
+    title: 'Emergência Documentada',
+    description: 'Registros da operação de ajuda às famílias atingidas verificados por auditoria de segurança.',
     iconName: 'FileText',
     earnedDate: '11/08/2026'
   },
