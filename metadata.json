@@ -1,0 +1,6 @@
+{
+  "name": "Vakinha - Design Evolution 2026",
+  "description": "Uma evolução do design da plataforma Vakinha mantendo toda a arquitetura de informação e aumentando a confiança, clareza e conversão de doações.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
