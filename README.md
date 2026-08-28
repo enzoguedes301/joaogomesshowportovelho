@@ -1,21 +1,3 @@
-# Vakinha — página de campanha (site atual)
-
-Reprodução fiel da página de campanha do **Vakinha** como ela é hoje, em desktop e no celular.
-
-- Desktop: valores (px, cores, pesos) literais do recorte HTML do site.
-- Celular: medido de capturas de tela reais (Android, ~411px): uma coluna, foto/título/progresso/valores/corações/resumo/criador num único cartão, abas roláveis, cartão "Sobre" com chave Pix e barra fixa "Quero Ajudar / Compartilhar".
-
-> O conceito de redesign que existia neste repositório foi removido em 16/08/2026. Sobrou só a versão atual.
-
-## Rodar
-
-```bash
-npm install
-cp .env.example .env   # preencha PIXGO_API_KEY
-npm run dev            # http://localhost:3000 (ou a próxima porta livre)
-
-npm run build && npm start   # produção: Express serve dist/ + as rotas de PIX
-```
 
 ## Doação por PIX (PixGo)
 
