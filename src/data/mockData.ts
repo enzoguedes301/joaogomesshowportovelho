@@ -96,9 +96,9 @@ export const sampleUpdates: CampaignUpdate[] = [
   {
     id: 'up1',
     date: '14/08/2026',
-    title: 'Pandora voltou a balançar o rabinho',
+    title: 'Primeiro carregamento de água potável entregue',
     content:
-      'As lesões estão cicatrizando e ela vem reagindo muito bem ao tratamento. Está cada dia mais carinhosa e já reconhece a família na hora dos curativos.',
+      'As equipes no local concluíram a distribuição do primeiro lote de água potável e itens de higiene às famílias desalojadas. O acesso por estrada segue parcial, e a logística está sendo refeita a cada dia.',
     likesCount: 34,
   },
   {
@@ -106,7 +106,7 @@ export const sampleUpdates: CampaignUpdate[] = [
     date: '11/08/2026',
     title: 'Como estão sendo usadas as doações',
     content:
-      'O valor arrecadado até aqui cobriu os primeiros curativos das queimaduras, os exames dos olhos e os medicamentos desta semana. Seguimos com as consultas de acompanhamento da córnea.',
+      'O valor arrecadado até aqui cobriu a compra de alimentos não perecíveis, água e materiais de emergência. Os comprovantes serão publicados nesta campanha conforme as compras forem concluídas.',
     likesCount: 42,
   },
 ];
