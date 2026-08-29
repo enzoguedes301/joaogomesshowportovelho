@@ -15,7 +15,7 @@ export const mainCampaign: Campaign = {
   title: 'Ajuda urgente para as famílias atingidas pelas enchentes no Nepal',
   category: 'DESASTRE HUMANITÁRIO',
   subcategory: 'CATÁSTROFE NATURAL',
-  location: 'SÃO PAULO / SP',
+  location: 'NEPAL',
   currentAmount: 5187.00,
   targetAmount: 1000000.00,
   heartsCount: 156,
