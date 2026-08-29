@@ -12,7 +12,7 @@ export const FONTE_NOVA = "'Nunito Sans', sans-serif";
 export const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace(/ /g, ' ');
 
-export const ABAS = ['Sobre', 'Atualizações', 'Quem ajudou', 'Vakinha Premiada', 'Selos recebidos'];
+export const ABAS = ['Sobre', 'Atualizações', 'Quem ajudou', 'Doação Premiada', 'Selos recebidos'];
 
 /**
  * Chamada acima da foto da campanha.
@@ -237,7 +237,7 @@ const CARDS = [
 ];
 
 const FOOTER_LINKS_1 = ['Quem somos', 'Vaquinhas', 'Criar vaquinhas', 'Login', 'Vaquinhas mais amadas', 'Politica de privacidade', 'Termos de uso', 'Verificação de links'];
-const FOOTER_LINKS_2 = ['Dúvidas frequentes', 'Taxas e prazos', 'Loja de corações', 'Vakinha Premiada', 'Blog do Vakinha', 'Mapa de posts do blog', 'Segurança e transparência', 'Busca por recibo'];
+const FOOTER_LINKS_2 = ['Dúvidas frequentes', 'Taxas e prazos', 'Loja de corações', 'Doação Premiada', 'Blog do Doar é Amor', 'Mapa de posts do blog', 'Segurança e transparência', 'Busca por recibo'];
 
 /** Seção "Outras histórias também precisam de você!" */
 export const OutrasHistorias: React.FC = () => (
@@ -455,7 +455,7 @@ export const RodapeAtual: React.FC = () => (
           <div style={{ fontSize: 13, color: '#c9c9cd', lineHeight: 1.7, marginTop: 6 }}>
             Vakinha.com.br
             <br />
-            CNPJ 22.831.673/0001-26
+            CNPJ 12.345.678/0001-90
             <br />
             Porto Alegre – RS
           </div>
