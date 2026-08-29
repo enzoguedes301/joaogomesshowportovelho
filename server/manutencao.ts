@@ -7,7 +7,7 @@
  *
  * Para tirar os panos: mudar para `false`, rodar `npm run build` e publicar.
  */
-export const EM_MANUTENCAO = true;
+export const EM_MANUTENCAO = false;
 
 export const PAGINA_MANUTENCAO = `<!doctype html>
 <html lang="pt-BR">
