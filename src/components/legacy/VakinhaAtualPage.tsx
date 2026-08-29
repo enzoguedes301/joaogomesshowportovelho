@@ -48,7 +48,7 @@ const CabecalhoAtual: React.FC = () => (
       }}
     >
       <img
-        src="/doar-eh-amor.jpg"
+        src="/doar-eh-amor.png"
         alt="Doar é Amor"
         className="h-8 sm:h-11"
         style={{ width: 'auto', display: 'block', flex: 'none' }}

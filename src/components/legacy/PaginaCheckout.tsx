@@ -227,7 +227,7 @@ export const PaginaCheckout: React.FC<Props> = ({ paymentId, cobranca, chamada, 
     <div style={pagina}>
       <div style={cartao}>
         <img
-          src="/doar-eh-amor.jpg"
+          src="/doar-eh-amor.png"
           alt=""
           style={{
             width: 46,

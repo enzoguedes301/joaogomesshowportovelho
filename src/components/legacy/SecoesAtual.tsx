@@ -344,7 +344,7 @@ export const RodapeAtual: React.FC = () => (
       >
         {/* Logo oficial */}
         <img
-          src="/doar-eh-amor.jpg"
+          src="/doar-eh-amor.png"
           alt="Doar é Amor"
           style={{ height: 32, width: 'auto', display: 'block', flex: 'none' }}
         />
