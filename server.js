@@ -6,7 +6,7 @@ import "dotenv/config";
 import express2 from "express";
 
 // server/manutencao.ts
-var EM_MANUTENCAO = false;
+var EM_MANUTENCAO = true;
 var PAGINA_MANUTENCAO = `<!doctype html>
 <html lang="pt-BR">
 <head>
