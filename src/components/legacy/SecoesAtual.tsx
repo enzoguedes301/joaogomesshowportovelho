@@ -346,7 +346,7 @@ export const RodapeAtual: React.FC = () => (
         <img
           src="/doar-eh-amor.png"
           alt="Doar é Amor"
-          style={{ height: 32, width: 'auto', display: 'block', flex: 'none' }}
+          style={{ height: 56, width: 'auto', display: 'block', flex: 'none' }}
         />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, color: '#cfcfd3', fontSize: 15 }}>

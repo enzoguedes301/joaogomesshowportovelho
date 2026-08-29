@@ -230,8 +230,8 @@ export const PaginaCheckout: React.FC<Props> = ({ paymentId, cobranca, chamada, 
           src="/doar-eh-amor.png"
           alt=""
           style={{
-            width: 46,
-            height: 46,
+            width: 80,
+            height: 80,
             objectFit: 'contain',
             borderRadius: '50%',
             border: '1px solid #ececf1',

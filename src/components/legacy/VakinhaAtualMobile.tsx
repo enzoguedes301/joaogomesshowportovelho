@@ -51,7 +51,7 @@ const CabecalhoMobile: React.FC = () => (
       zIndex: 2,
     }}
   >
-    <img src="/doar-eh-amor.png" alt="Doar é Amor" style={{ height: 34, width: 'auto', display: 'block' }} />
+    <img src="/doar-eh-amor.png" alt="Doar é Amor" style={{ height: 60, width: 'auto', display: 'block' }} />
     <div style={{ display: 'flex', alignItems: 'center', gap: 30 }}>
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={VERDE} strokeWidth="2.6" strokeLinecap="round">
         <circle cx="10.5" cy="10.5" r="7" />
