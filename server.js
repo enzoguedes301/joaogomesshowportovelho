@@ -5,6 +5,44 @@ import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import express2 from "express";
 
+// server/manutencao.ts
+var EM_MANUTENCAO = true;
+var PAGINA_MANUTENCAO = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Em manuten\xE7\xE3o</title>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #ffffff;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    color: #1a1a1a;
+    text-align: center;
+    padding: 24px;
+  }
+  h1 {
+    font-size: clamp(1.25rem, 5vw, 2rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+  <h1>EM MANUTEN\xC7\xC3O</h1>
+</body>
+</html>
+`;
+
 // server/rotasPix.ts
 import crypto from "node:crypto";
 import express, { Router } from "express";
@@ -291,10 +329,16 @@ var raiz = path.dirname(fileURLToPath(import.meta.url));
 var app = express2();
 var porta = Number(process.env.PORT ?? 3100);
 app.set("trust proxy", 1);
-app.use("/api", criarRotasPix());
-var dist = [path.resolve(raiz, "dist"), path.resolve(raiz, "..", "dist")].find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, "..", "dist");
-app.use(express2.static(dist));
-app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+if (EM_MANUTENCAO) {
+  app.use((_req, res) => {
+    res.status(503).set("Cache-Control", "no-store").set("Retry-After", "3600").type("html").send(PAGINA_MANUTENCAO);
+  });
+} else {
+  app.use("/api", criarRotasPix());
+  const dist = [path.resolve(raiz, "dist"), path.resolve(raiz, "..", "dist")].find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, "..", "dist");
+  app.use(express2.static(dist));
+  app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+}
 app.listen(porta, () => {
   console.log(`Vakinha no ar em http://localhost:${porta}`);
   if (!process.env.PIXGO_API_KEY) {
