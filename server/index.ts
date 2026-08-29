@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
+import compression from 'compression';
 import express from 'express';
 import { EM_MANUTENCAO, PAGINA_MANUTENCAO } from './manutencao';
 import { criarRotasPix } from './rotasPix';
@@ -19,6 +20,7 @@ const app = express();
 const porta = Number(process.env.PORT ?? 3100);
 
 app.set('trust proxy', 1);
+app.use(compression({ level: 6 }));
 
 if (EM_MANUTENCAO) {
   // 503 e no-store: assim nem a CDN nem o navegador guardam esta página, e o
@@ -38,7 +40,17 @@ if (EM_MANUTENCAO) {
   // `dist/`; rodando pelo fonte, este arquivo está um nível abaixo, em `server/`.
   const dist = [path.resolve(raiz, 'dist'), path.resolve(raiz, '..', 'dist')]
     .find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, '..', 'dist');
-  app.use(express.static(dist));
+
+  app.use(express.static(dist, {
+    maxAge: '1y',
+    etag: false,
+    setHeaders(res, path) {
+      if (path.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+      }
+    }
+  }));
+
   app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 

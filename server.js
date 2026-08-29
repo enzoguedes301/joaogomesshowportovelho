@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
+import compression from "compression";
 import express2 from "express";
 
 // server/manutencao.ts
@@ -329,6 +330,7 @@ var raiz = path.dirname(fileURLToPath(import.meta.url));
 var app = express2();
 var porta = Number(process.env.PORT ?? 3100);
 app.set("trust proxy", 1);
+app.use(compression({ level: 6 }));
 if (EM_MANUTENCAO) {
   app.use((_req, res) => {
     res.status(503).set("Cache-Control", "no-store").set("Retry-After", "3600").type("html").send(PAGINA_MANUTENCAO);
@@ -336,7 +338,15 @@ if (EM_MANUTENCAO) {
 } else {
   app.use("/api", criarRotasPix());
   const dist = [path.resolve(raiz, "dist"), path.resolve(raiz, "..", "dist")].find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, "..", "dist");
-  app.use(express2.static(dist));
+  app.use(express2.static(dist, {
+    maxAge: "1y",
+    etag: false,
+    setHeaders(res, path2) {
+      if (path2.endsWith(".html")) {
+        res.setHeader("Cache-Control", "public, max-age=3600, must-revalidate");
+      }
+    }
+  }));
   app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
 }
 app.listen(porta, () => {

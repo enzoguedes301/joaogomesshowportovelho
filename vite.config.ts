@@ -23,4 +23,25 @@ function apiPix(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), apiPix()],
+  build: {
+    target: 'ES2020',
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        passes: 2,
+      },
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+        },
+      },
+    },
+    cssMinify: true,
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 1000,
+    reportCompressedSize: true,
+  },
 });

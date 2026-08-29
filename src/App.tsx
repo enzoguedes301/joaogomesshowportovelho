@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import { ModalDoacao } from './components/legacy/ModalDoacao';
-import { PaginaCheckout } from './components/legacy/PaginaCheckout';
 import { VakinhaAtualPage } from './components/legacy/VakinhaAtualPage';
 import { useEhCelular } from './components/legacy/useEhCelular';
 import { mainCampaign } from './data/mockData';
 import type { Cobranca } from './pix/usePix';
 import { useRota } from './rota';
 import { Campaign } from './types';
+
+const PaginaCheckout = lazy(() => import('./components/legacy/PaginaCheckout').then(m => ({ default: m.PaginaCheckout })));
 
 /** Chamada do topo da tela de pagamento. */
 const CHAMADA_CHECKOUT = 'Você é a nossa última esperança';
@@ -31,16 +32,18 @@ export default function App() {
 
   if (rota.caminho === '/checkout') {
     return (
-      <PaginaCheckout
-        paymentId={cobranca?.paymentId ?? rota.parametros.get('p') ?? ''}
-        cobranca={cobranca}
-        chamada={CHAMADA_CHECKOUT}
-        aoVoltar={() => {
-          setCobranca(null);
-          navegar('/');
-        }}
-        aoConfirmar={somarDoacao}
-      />
+      <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando...</div>}>
+        <PaginaCheckout
+          paymentId={cobranca?.paymentId ?? rota.parametros.get('p') ?? ''}
+          cobranca={cobranca}
+          chamada={CHAMADA_CHECKOUT}
+          aoVoltar={() => {
+            setCobranca(null);
+            navegar('/');
+          }}
+          aoConfirmar={somarDoacao}
+        />
+      </Suspense>
     );
   }
 
