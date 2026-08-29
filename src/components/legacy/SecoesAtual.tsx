@@ -342,10 +342,10 @@ export const RodapeAtual: React.FC = () => (
       <div
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}
       >
-        {/* Logo oficial no lugar do "V + vakinha" que o arquivo trazia como mock */}
+        {/* Logo oficial */}
         <img
-          src="/vakinha-logo.webp"
-          alt="Vakinha"
+          src="/doar-eh-amor.jpg"
+          alt="Doar é Amor"
           style={{ height: 32, width: 'auto', display: 'block', flex: 'none' }}
         />
 

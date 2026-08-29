@@ -227,7 +227,7 @@ export const PaginaCheckout: React.FC<Props> = ({ paymentId, cobranca, chamada, 
     <div style={pagina}>
       <div style={cartao}>
         <img
-          src="/vakinha-logo.webp"
+          src="/doar-eh-amor.jpg"
           alt=""
           style={{
             width: 46,

@@ -48,8 +48,8 @@ const CabecalhoAtual: React.FC = () => (
       }}
     >
       <img
-        src="/vakinha-logo.webp"
-        alt="Vakinha"
+        src="/doar-eh-amor.jpg"
+        alt="Doar é Amor"
         className="h-8 sm:h-11"
         style={{ width: 'auto', display: 'block', flex: 'none' }}
       />
