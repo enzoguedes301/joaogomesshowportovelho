@@ -350,7 +350,7 @@ if (EM_MANUTENCAO) {
   app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
 }
 app.listen(porta, () => {
-  console.log(`Vakinha no ar em http://localhost:${porta}`);
+  console.log(`Doar \xE9 Amor no ar em http://localhost:${porta}`);
   if (!process.env.PIXGO_API_KEY) {
     console.warn('Sem PIXGO_API_KEY: o bot\xE3o "Quero Ajudar" abre o modal, mas n\xE3o gera cobran\xE7a.');
   }

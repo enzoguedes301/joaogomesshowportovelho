@@ -33,14 +33,14 @@ export const mainCampaign: Campaign = {
     'Em 26 de agosto de 2026, uma forte inundação súbita atingiu áreas do Nepal próximas à fronteira com o Tibete. A força da água, da lama e das rochas destruiu casas, estradas, pontes e estruturas de energia, deixando famílias em situação de emergência.',
   fullStory: [
     'As equipes de resgate continuam mobilizadas para localizar pessoas desaparecidas, retirar sobreviventes das áreas de risco e levar assistência às comunidades afetadas. O balanço oficial ainda está sendo atualizado pelas autoridades, e a dimensão da destruição continua sendo avaliada.',
-    'Esta Vakinha foi criada para reunir recursos e apoiar a operação de ajuda no local ocorrido. O objetivo é contribuir com a aquisição e a distribuição de água potável, alimentos, itens de higiene, materiais de emergência e outros recursos definidos conforme as necessidades confirmadas das famílias atingidas.',
+    'Esta campanha foi criada para reunir recursos e apoiar a operação de ajuda no local ocorrido. O objetivo é contribuir com a aquisição e a distribuição de água potável, alimentos, itens de higiene, materiais de emergência e outros recursos definidos conforme as necessidades confirmadas das famílias atingidas.',
     'Informações da campanha:',
     '• Meta total: R$ 1.000.000,00',
     '• Finalidade: apoio emergencial às comunidades atingidas pelas enchentes no Nepal',
     '• Aplicação dos recursos: alimentos, água, higiene, materiais emergenciais e logística de atendimento, conforme as necessidades confirmadas no local',
     '• Prestação de contas: atualizações, comprovantes e informações sobre a utilização dos recursos serão publicados nesta campanha',
     'Uma contribuição de R$ 50, R$ 100, R$ 500, R$ 1.000 ou qualquer outro valor pode ajudar esta campanha a avançar. Se você puder contribuir com um valor maior, sua doação poderá fortalecer os primeiros esforços de assistência. Doe somente o valor que estiver dentro das suas possibilidades.',
-    'Se você não puder doar neste momento, compartilhar esta Vakinha também é uma forma importante de ajudar. Uma única divulgação pode fazer a campanha chegar a pessoas, empresas e grupos dispostos a contribuir com a assistência emergencial.',
+    'Se você não puder doar neste momento, compartilhar esta campanha também é uma forma importante de ajudar. Uma única divulgação pode fazer a campanha chegar a pessoas, empresas e grupos dispostos a contribuir com a assistência emergencial.',
     'Ajude o Nepal. Faça sua contribuição, compartilhe esta campanha e acompanhe as atualizações sobre a aplicação dos recursos. Juntos, podemos transformar solidariedade em ajuda real.',
     'Os números da emergência podem ser alterados conforme as autoridades atualizam o balanço. Esta campanha será atualizada sempre que novas informações verificadas estiverem disponíveis.',
   ],
@@ -162,7 +162,7 @@ export const sampleBadges: BadgeItem[] = [
   {
     id: 'b1',
     title: 'Identidade Verificada',
-    description: 'Documentos do criador da vaquinha validados com biometria facial pela plataforma Vakinha.',
+    description: 'Documentos do criador validados com biometria facial pela plataforma.',
     iconName: 'ShieldCheck',
     earnedDate: '09/08/2026'
   },

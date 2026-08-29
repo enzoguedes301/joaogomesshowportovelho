@@ -12,7 +12,7 @@ const PaginaCheckout = lazy(() => import('./components/legacy/PaginaCheckout').t
 /** Chamada do topo da tela de pagamento. */
 const CHAMADA_CHECKOUT = 'Você é a nossa última esperança';
 
-/** Página de campanha do Vakinha (desktop e celular) e a tela de pagamento em /checkout. */
+/** Página de campanha (desktop e celular) e a tela de pagamento em /checkout. */
 export default function App() {
   const [campaign, setCampaign] = useState<Campaign>(mainCampaign);
   const [doando, setDoando] = useState(false);

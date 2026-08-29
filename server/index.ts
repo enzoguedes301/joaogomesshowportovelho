@@ -55,7 +55,7 @@ if (EM_MANUTENCAO) {
 }
 
 app.listen(porta, () => {
-  console.log(`Vakinha no ar em http://localhost:${porta}`);
+  console.log(`Doar é Amor no ar em http://localhost:${porta}`);
   if (!process.env.PIXGO_API_KEY) {
     console.warn('Sem PIXGO_API_KEY: o botão "Quero Ajudar" abre o modal, mas não gera cobrança.');
   }
