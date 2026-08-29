@@ -453,7 +453,7 @@ export const RodapeAtual: React.FC = () => (
             </div>
           ))}
           <div style={{ fontSize: 13, color: '#c9c9cd', lineHeight: 1.7, marginTop: 6 }}>
-            Vakinha.com.br
+            doareamor.online
             <br />
             CNPJ 12.345.678/0001-90
             <br />
