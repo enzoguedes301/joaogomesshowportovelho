@@ -102,22 +102,32 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 function carregar() {
-  if (cache) return cache;
+  let carimbo = -1;
   try {
-    const bruto = fs.readFileSync(ARQUIVO, "utf8");
-    const lido = JSON.parse(bruto);
+    carimbo = fs.statSync(ARQUIVO).mtimeMs;
+  } catch {
+  }
+  if (cache && carimbo === carimboDoCache) return cache;
+  try {
+    const lido = JSON.parse(fs.readFileSync(ARQUIVO, "utf8"));
     cache = { ...structuredClone(VAZIO), ...lido };
   } catch {
     cache = structuredClone(VAZIO);
   }
+  carimboDoCache = carimbo;
   return cache;
 }
 function salvar() {
-  const dados = carregar();
+  const dados = cache ?? carregar();
   fs.mkdirSync(path.dirname(ARQUIVO), { recursive: true });
   const temporario = `${ARQUIVO}.${process.pid}.tmp`;
   fs.writeFileSync(temporario, JSON.stringify(dados, null, 2), "utf8");
   fs.renameSync(temporario, ARQUIVO);
+  try {
+    carimboDoCache = fs.statSync(ARQUIVO).mtimeMs;
+  } catch {
+    carimboDoCache = -1;
+  }
 }
 function agora() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -196,12 +206,13 @@ function tabela(nome) {
     }
   };
 }
-var VAZIO, ARQUIVO, cache, prisma;
+var VAZIO, ARQUIVO, cache, carimboDoCache, prisma;
 var init_banco = __esm({
   "server/banco.ts"() {
     VAZIO = { doacao: [], evento: [], webhookPixgo: [], sessaoAdmin: [], configApp: [] };
     ARQUIVO = path.resolve(process.cwd(), "dados", "doacoes.json");
     cache = null;
+    carimboDoCache = -1;
     prisma = {
       doacao: tabela("doacao"),
       evento: tabela("evento"),

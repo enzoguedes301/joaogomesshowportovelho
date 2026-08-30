@@ -40,18 +40,36 @@ const VAZIO: Conteudo = { doacao: [], evento: [], webhookPixgo: [], sessaoAdmin:
 const ARQUIVO = path.resolve(process.cwd(), 'dados', 'doacoes.json');
 
 let cache: Conteudo | null = null;
+/** Momento do arquivo quando o cache foi montado, para saber se ficou velho. */
+let carimboDoCache = -1;
 
+/**
+ * Relê o arquivo sempre que ele muda no disco.
+ *
+ * Sem isso, cada processo do servidor guardaria sua própria cópia para sempre:
+ * o pm2 costuma subir mais de um, e aí um grava a sessão do painel enquanto o
+ * outro jura que ela não existe — o dono faz login e cai na tela seguinte.
+ * A comparação de mtime custa quase nada e mantém todos vendo o mesmo estado.
+ */
 function carregar(): Conteudo {
-  if (cache) return cache;
+  let carimbo = -1;
   try {
-    const bruto = fs.readFileSync(ARQUIVO, 'utf8');
-    const lido = JSON.parse(bruto) as Partial<Conteudo>;
+    carimbo = fs.statSync(ARQUIVO).mtimeMs;
+  } catch {
+    // Arquivo ainda não existe: o cache vazio serve.
+  }
+
+  if (cache && carimbo === carimboDoCache) return cache;
+
+  try {
+    const lido = JSON.parse(fs.readFileSync(ARQUIVO, 'utf8')) as Partial<Conteudo>;
     cache = { ...structuredClone(VAZIO), ...lido };
   } catch {
     // Primeira execução, ou arquivo corrompido. Começar vazio é melhor que
     // derrubar o servidor — as doações em si vivem na PixGo, não aqui.
     cache = structuredClone(VAZIO);
   }
+  carimboDoCache = carimbo;
   return cache;
 }
 
@@ -61,11 +79,18 @@ function carregar(): Conteudo {
  * pela metade que levaria o histórico junto.
  */
 function salvar(): void {
-  const dados = carregar();
+  const dados = cache ?? carregar();
   fs.mkdirSync(path.dirname(ARQUIVO), { recursive: true });
   const temporario = `${ARQUIVO}.${process.pid}.tmp`;
   fs.writeFileSync(temporario, JSON.stringify(dados, null, 2), 'utf8');
   fs.renameSync(temporario, ARQUIVO);
+  // O cache acabou de virar o arquivo: guardar o novo carimbo evita reler à toa
+  // na próxima leitura deste mesmo processo.
+  try {
+    carimboDoCache = fs.statSync(ARQUIVO).mtimeMs;
+  } catch {
+    carimboDoCache = -1;
+  }
 }
 
 function agora(): string {
