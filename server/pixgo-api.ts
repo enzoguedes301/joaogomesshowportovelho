@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './banco';
 import axios from 'axios';
 
-const prisma = new PrismaClient();
 const router = Router();
 
 const PIXGO_API_KEY = process.env.PIXGO_API_KEY || '';

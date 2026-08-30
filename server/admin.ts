@@ -1,9 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './banco';
 import * as crypto from 'crypto';
 import * as bcryptjs from 'bcryptjs';
 
-const prisma = new PrismaClient();
 const router = Router();
 
 // Middleware para verificar sessão
@@ -32,15 +31,29 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'senha_obrigatoria', message: 'Senha é obrigatória' });
   }
 
-  const config = await prisma.configApp.findUnique({ where: { id: 'config' } });
-  const senhaCorreta = config?.senhaAdmin === senha;
+  // A senha vive no banco, mas o banco nasce vazio: no primeiro login vale a do
+  // .env e ela é gravada, senão ninguém entraria num painel recém-instalado.
+  let config = await prisma.configApp.findUnique({ where: { id: 'config' } });
+  if (!config?.senhaAdmin) {
+    const senhaInicial = process.env.ADMIN_PASSWORD_HASH;
+    if (senhaInicial) {
+      config = await prisma.configApp.upsert({
+        where: { id: 'config' },
+        update: { senhaAdmin: senhaInicial },
+        create: { id: 'config', senhaAdmin: senhaInicial },
+      });
+    }
+  }
+
+  const senhaCorreta = Boolean(config?.senhaAdmin) && config?.senhaAdmin === senha;
 
   if (!senhaCorreta) {
     return res.status(400).json({ success: false, error: 'senha_incorreta', message: 'Senha incorreta' });
   }
 
+  const horas = Number(process.env.ADMIN_SESSION_HOURS) || 12;
   const token = crypto.randomBytes(32).toString('hex');
-  const validoAte = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 horas
+  const validoAte = new Date(Date.now() + horas * 60 * 60 * 1000);
 
   await prisma.sessaoAdmin.create({
     data: { token, validoAte, papel: 'dono' }
@@ -48,7 +61,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
   return res.json({
     success: true,
-    data: { token, horas: 12, papel: 'dono' }
+    data: { token, horas, papel: 'dono' }
   });
 });
 

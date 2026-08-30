@@ -10,6 +10,7 @@ import {
   VALOR_MINIMO,
   type StatusPagamento,
 } from './pixgo';
+import { atualizarStatusDoacao, registrarDoacao, registrarWebhook } from './registroDoacoes';
 
 /**
  * Rotas de doação por PIX. O mesmo router serve o dev (montado dentro do Vite,
@@ -17,7 +18,11 @@ import {
  * versão do fluxo que só funciona numa das duas pontas.
  */
 
-/** O que o servidor lembra de cada cobrança. Em memória: é um protótipo, sem banco. */
+/**
+ * O que o servidor lembra de cada cobrança dentro do processo — é o atalho que
+ * evita bater na PixGo a cada pergunta do navegador. O registro duradouro, o que
+ * o painel lê, vai para o banco em registroDoacoes.ts.
+ */
 interface Registro {
   paymentId: string;
   externalId: string;
@@ -120,13 +125,28 @@ export function criarRotasPix(): Router {
       const evento = JSON.parse(bruto || '{}');
       const paymentId: string | undefined = evento?.data?.payment_id;
       const status: StatusPagamento | undefined = evento?.data?.status;
+
+      // Só compra: o painel reage a pagamento confirmado e ignora o resto. Uma
+      // cobrança que expira sem ser paga não vira aviso — ela simplesmente
+      // continua pendente, que é o que ela é.
+      const ehCompra = status === 'completed';
+
+      if (!ehCompra) {
+        console.log(`[pix] webhook ${evento?.event} ignorado (status ${status})`);
+        res.status(200).json({ received: true, ignorado: true });
+        return;
+      }
+
+      void registrarWebhook(String(evento?.event ?? 'compra'), bruto);
+
       if (paymentId) {
         const reg = registros.get(paymentId);
-        if (reg && status) {
+        if (reg) {
           reg.status = status;
           reg.confirmadoPeloWebhook = true;
         }
-        console.log(`[pix] webhook ${evento?.event} para ${paymentId} (${status})`);
+        void atualizarStatusDoacao(paymentId, status);
+        console.log(`[pix] compra confirmada para ${paymentId}`);
       }
     } catch {
       res.status(400).json({ erro: 'PAYLOAD_INVALIDO' });
@@ -192,6 +212,16 @@ export function criarRotasPix(): Router {
         confirmadoPeloWebhook: false,
       });
 
+      // Sem await: o doador não pode esperar o banco para ver o QR Code.
+      void registrarDoacao({
+        paymentId: cobranca.payment_id,
+        valor,
+        nome,
+        email,
+        copiaECola: cobranca.qr_code,
+        status: cobranca.status,
+      });
+
       // Só o que a tela precisa. O documento do doador não volta para o navegador.
       res.status(201).json({
         paymentId: cobranca.payment_id,
@@ -237,6 +267,10 @@ export function criarRotasPix(): Router {
     try {
       const status = await consultarStatus(id);
       if (reg) reg.status = status.status;
+
+      // Rede de segurança: se o webhook não estiver configurado, é por aqui que
+      // o painel fica sabendo que a doação foi paga.
+      void atualizarStatusDoacao(id, status.status);
       res.json({
         paymentId: status.payment_id,
         status: status.status,

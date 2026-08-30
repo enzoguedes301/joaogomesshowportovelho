@@ -6,8 +6,6 @@ import compression from 'compression';
 import express from 'express';
 import { EM_MANUTENCAO, PAGINA_MANUTENCAO } from './manutencao';
 import { criarRotasPix } from './rotasPix';
-import adminRouter from './admin';
-import pixgoRouter from './pixgo-api';
 
 /**
  * Servidor de produção: serve o `dist/` do Vite e as rotas de PIX.
@@ -36,21 +34,55 @@ if (EM_MANUTENCAO) {
       .send(PAGINA_MANUTENCAO);
   });
 } else {
-  // Middleware para JSON
-  app.use(express.json());
-
-  // Rotas da API
+  // Rotas da API. As de PIX vêm primeiro e SEM express.json() antes delas: o
+  // webhook confere a assinatura HMAC sobre o corpo bruto, e um parser de JSON
+  // aqui em cima consumiria esse corpo e faria toda assinatura válida ser
+  // recusada. O router de PIX liga o parser sozinho depois do webhook.
   app.use('/api', criarRotasPix());
-  app.use('/api/admin', adminRouter);
-  app.use('/api/pix', pixgoRouter);
 
-  // Servir painel admin
-  app.use('/admin', express.static(path.resolve(raiz, '..', 'publico-admin')));
+  // Montado já: as rotas do painel são penduradas nele quando o import abaixo
+  // termina. Um Router aceita rotas novas depois de montado, então nada precisa
+  // esperar o Prisma para o servidor começar a atender.
+  const painel = express.Router();
+  app.use('/api', painel);
+
+  /*
+   * O painel entra por import tardio, e não no topo do arquivo, porque ele
+   * depende do Prisma. Com import estático, um servidor sem `npm install` ou
+   * sem `prisma generate` nem chega a subir: o site inteiro sai do ar por causa
+   * de uma tela de administração. Assim o pior caso vira "o painel não abre",
+   * enquanto a campanha continua recebendo doação.
+   */
+  void (async () => {
+    try {
+      const [{ default: adminRouter }, { default: pixgoRouter }] = await Promise.all([
+        import('./admin'),
+        import('./pixgo-api'),
+      ]);
+      painel.use('/admin', express.json(), adminRouter);
+      painel.use('/pix', express.json(), pixgoRouter);
+      console.log('Painel admin no ar em /admin');
+    } catch (erro) {
+      console.error(
+        'Painel admin fora do ar (rode `npm install` e `npx prisma generate`). O site segue normal.',
+        erro,
+      );
+    }
+  })();
 
   // O bundle de produção (`npm run build`) fica na raiz do projeto, ao lado do
   // `dist/`; rodando pelo fonte, este arquivo está um nível abaixo, em `server/`.
-  const dist = [path.resolve(raiz, 'dist'), path.resolve(raiz, '..', 'dist')]
-    .find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, '..', 'dist');
+  // Por isso cada pasta é procurada nos dois lugares.
+  const acharPasta = (nome: string) =>
+    [path.resolve(raiz, nome), path.resolve(raiz, '..', nome)]
+      .find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, '..', nome);
+
+  const dist = acharPasta('dist');
+
+  // Painel admin ANTES do catch-all do React, senão o index.html do site
+  // responderia no lugar dele. `index` aponta para admin.html porque o painel
+  // não tem index.html.
+  app.use('/admin', express.static(acharPasta('publico-admin'), {index: 'admin.html'}));
 
   app.use(express.static(dist, {
     maxAge: '1y',
