@@ -22,6 +22,35 @@ const verificarSessao = async (req: Request, res: Response, next: Function) => {
   next();
 };
 
+/*
+ * Diagnóstico do armazenamento, sem exigir login — porque o problema que ele
+ * existe para detectar é justamente o login não funcionar.
+ *
+ * Responde só dois sim/não: se a gravação sobrevive e se já existe senha. Nada
+ * de caminhos de disco, contagem de doações ou dados de doador: a rota é
+ * pública e serve para diagnosticar, não para contar a vida da campanha.
+ */
+router.get('/saude', async (_req: Request, res: Response) => {
+  try {
+    const marca = `saude-${Date.now()}`;
+    await prisma.evento.create({ data: { doacaoId: marca, tipo: 'saude' } });
+    const achado = await prisma.evento.findUnique({ where: { doacaoId: marca } });
+    await prisma.evento.deleteMany({ where: { doacaoId: marca } });
+
+    const config = await prisma.configApp.findUnique({ where: { id: 'config' } });
+
+    return res.json({
+      success: true,
+      data: { gravando: Boolean(achado), senhaDefinida: Boolean(config?.senhaAdmin) },
+    });
+  } catch (erro: any) {
+    return res.json({
+      success: true,
+      data: { gravando: false, senhaDefinida: false, erro: String(erro?.message ?? erro) },
+    });
+  }
+});
+
 // LOGIN
 router.post('/login', async (req: Request, res: Response) => {
   const { senha } = req.body;

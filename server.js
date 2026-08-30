@@ -100,7 +100,26 @@ var init_pixgo = __esm({
 // server/banco.ts
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import crypto from "node:crypto";
+function escolherArquivo() {
+  const candidatos = [
+    process.env.DADOS_DIR,
+    path.join(os.homedir(), ".doar-e-amor"),
+    path.resolve(process.cwd(), "dados")
+  ].filter(Boolean);
+  for (const pasta of candidatos) {
+    try {
+      fs.mkdirSync(pasta, { recursive: true });
+      const teste = path.join(pasta, ".escrita-ok");
+      fs.writeFileSync(teste, "ok");
+      fs.unlinkSync(teste);
+      return path.join(pasta, "doacoes.json");
+    } catch {
+    }
+  }
+  return path.resolve(process.cwd(), "dados", "doacoes.json");
+}
 function carregar() {
   let carimbo = -1;
   try {
@@ -210,7 +229,8 @@ var VAZIO, ARQUIVO, cache, carimboDoCache, prisma;
 var init_banco = __esm({
   "server/banco.ts"() {
     VAZIO = { doacao: [], evento: [], webhookPixgo: [], sessaoAdmin: [], configApp: [] };
-    ARQUIVO = path.resolve(process.cwd(), "dados", "doacoes.json");
+    ARQUIVO = escolherArquivo();
+    console.log(`[banco] gravando em ${ARQUIVO}`);
     cache = null;
     carimboDoCache = -1;
     prisma = {
@@ -355,6 +375,24 @@ var init_admin = __esm({
       req.sessao = sessao;
       next();
     };
+    router.get("/saude", async (_req, res) => {
+      try {
+        const marca = `saude-${Date.now()}`;
+        await prisma.evento.create({ data: { doacaoId: marca, tipo: "saude" } });
+        const achado = await prisma.evento.findUnique({ where: { doacaoId: marca } });
+        await prisma.evento.deleteMany({ where: { doacaoId: marca } });
+        const config = await prisma.configApp.findUnique({ where: { id: "config" } });
+        return res.json({
+          success: true,
+          data: { gravando: Boolean(achado), senhaDefinida: Boolean(config?.senhaAdmin) }
+        });
+      } catch (erro) {
+        return res.json({
+          success: true,
+          data: { gravando: false, senhaDefinida: false, erro: String(erro?.message ?? erro) }
+        });
+      }
+    });
     router.post("/login", async (req, res) => {
       const { senha } = req.body;
       if (!senha) {

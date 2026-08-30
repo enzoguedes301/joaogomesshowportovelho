@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 
 /**
@@ -34,10 +35,43 @@ interface Conteudo {
 const VAZIO: Conteudo = { doacao: [], evento: [], webhookPixgo: [], sessaoAdmin: [], configApp: [] };
 
 /**
- * Fica junto do código, não em /tmp: em VPS o /tmp some quando a máquina
- * reinicia, e com ele todo o histórico da campanha.
+ * Onde o arquivo mora — e por que NÃO é dentro do projeto.
+ *
+ * O deploy deste servidor sincroniza a pasta do projeto a cada envio: um
+ * arquivo guardado ali é apagado junto. Foi o que aconteceu — a senha do painel
+ * voltava a ficar em aberto e as doações registradas sumiam, dando a impressão
+ * de que nada chegava.
+ *
+ * Por isso a preferência é a pasta pessoal do usuário do servidor, que nenhum
+ * deploy toca. `DADOS_DIR` permite apontar para outro lugar (um disco montado,
+ * por exemplo), e a pasta do projeto fica só como último recurso — melhor
+ * gravar em lugar frágil do que não gravar.
  */
-const ARQUIVO = path.resolve(process.cwd(), 'dados', 'doacoes.json');
+function escolherArquivo(): string {
+  const candidatos = [
+    process.env.DADOS_DIR,
+    path.join(os.homedir(), '.doar-e-amor'),
+    path.resolve(process.cwd(), 'dados'),
+  ].filter(Boolean) as string[];
+
+  for (const pasta of candidatos) {
+    try {
+      fs.mkdirSync(pasta, { recursive: true });
+      // Escrever de verdade: permissão só se confirma tentando.
+      const teste = path.join(pasta, '.escrita-ok');
+      fs.writeFileSync(teste, 'ok');
+      fs.unlinkSync(teste);
+      return path.join(pasta, 'doacoes.json');
+    } catch {
+      // Sem permissão aqui; tenta o próximo.
+    }
+  }
+
+  return path.resolve(process.cwd(), 'dados', 'doacoes.json');
+}
+
+const ARQUIVO = escolherArquivo();
+console.log(`[banco] gravando em ${ARQUIVO}`);
 
 let cache: Conteudo | null = null;
 /** Momento do arquivo quando o cache foi montado, para saber se ficou velho. */
