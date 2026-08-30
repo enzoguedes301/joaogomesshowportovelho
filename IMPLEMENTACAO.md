@@ -38,7 +38,7 @@
   - Telefone
   - Valor da doação
   - Timestamp
-- ✅ Facebook Pixel ID: `947774625034514`
+- ✅ Facebook Pixel ID: definido no `.env`
 - ✅ Token API: Configurado no `.env`
 
 ## 📦 Dependências Instaladas
@@ -55,10 +55,10 @@
 
 ## 🔐 Credenciais Configuradas
 ```env
-PIXGO_API_KEY=pk_b5f1025cc799eb1b81b75c18a11c6983e779a2bd8f469af1c382cf483f721e01
-FACEBOOK_PIXEL_ID=947774625034514
-FACEBOOK_API_TOKEN=EAAdOqKjeh8Q...
-ADMIN_PASSWORD_HASH=maisvelho123
+PIXGO_API_KEY=<no .env do servidor, nunca aqui>
+FACEBOOK_PIXEL_ID=<no .env do servidor>
+FACEBOOK_API_TOKEN=<no .env do servidor, nunca aqui>
+ADMIN_PASSWORD_HASH=<no .env do servidor, nunca aqui>
 ADMIN_SESSION_HOURS=12
 DATABASE_URL=file:./prisma/dev.db
 ```
@@ -89,7 +89,7 @@ npm run build
 
 ### 4. **Testar Fluxo Completo**
 1. Acessar http://localhost:3000/admin
-2. Login com senha: `maisvelho123`
+2. Login com a senha definida em `ADMIN_PASSWORD_HASH`
 3. Ver doações em tempo real
 4. Simular pagamento Pixgo
 5. Verificar evento no Facebook Pixel
@@ -123,7 +123,7 @@ npm run build
 ## ⚙️ Configurações Importantes
 
 ### Senha Admin
-- Padrão: `maisvelho123`
+- Definida em `ADMIN_PASSWORD_HASH`, no `.env` do servidor
 - Alterar em: `server/admin.ts` ou no banco ConfigApp
 
 ### Duração da Sessão

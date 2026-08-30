@@ -14,7 +14,7 @@ http://localhost:3000/admin
 ```
 
 ### Passo 3: Fazer login
-- **Senha:** `maisvelho123`
+- **Senha:** a senha definida em `ADMIN_PASSWORD_HASH` no `.env`
 - Clique em "Entrar"
 
 ### Passo 4: Gerenciar doações
@@ -46,7 +46,7 @@ https://correntedobeem.online/admin
 ```
 
 ### Passo 4: Fazer login
-- **Senha:** `maisvelho123`
+- **Senha:** a senha definida em `ADMIN_PASSWORD_HASH` no `.env`
 
 ---
 
@@ -114,7 +114,7 @@ O evento é enviado automaticamente quando:
 ## ❌ Troubleshooting
 
 ### "Senha incorreta"
-- Verifique se digitou: `maisvelho123`
+- Verifique se digitou: a senha definida em `ADMIN_PASSWORD_HASH` no `.env`
 - Sem espaços extras
 
 ### "Painel não carrega"
