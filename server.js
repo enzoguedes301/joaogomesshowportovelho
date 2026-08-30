@@ -361,14 +361,17 @@ var init_admin = __esm({
         return res.status(400).json({ success: false, error: "senha_obrigatoria", message: "Senha \xE9 obrigat\xF3ria" });
       }
       let config = await prisma.configApp.findUnique({ where: { id: "config" } });
+      let acabouDeDefinir = false;
       if (!config?.senhaAdmin) {
-        const senhaInicial = process.env.ADMIN_PASSWORD_HASH;
-        if (senhaInicial) {
-          config = await prisma.configApp.upsert({
-            where: { id: "config" },
-            update: { senhaAdmin: senhaInicial },
-            create: { id: "config", senhaAdmin: senhaInicial }
-          });
+        const senhaInicial = process.env.ADMIN_PASSWORD_HASH || senha;
+        acabouDeDefinir = !process.env.ADMIN_PASSWORD_HASH;
+        config = await prisma.configApp.upsert({
+          where: { id: "config" },
+          update: { senhaAdmin: senhaInicial },
+          create: { id: "config", senhaAdmin: senhaInicial }
+        });
+        if (acabouDeDefinir) {
+          console.log("[painel] senha definida no primeiro acesso.");
         }
       }
       const senhaCorreta = Boolean(config?.senhaAdmin) && config?.senhaAdmin === senha;

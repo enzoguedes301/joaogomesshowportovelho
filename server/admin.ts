@@ -30,17 +30,33 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'senha_obrigatoria', message: 'Senha é obrigatória' });
   }
 
-  // A senha vive no banco, mas o banco nasce vazio: no primeiro login vale a do
-  // .env e ela é gravada, senão ninguém entraria num painel recém-instalado.
+  /*
+   * A senha vive no banco, que nasce vazio. Sem nada gravado, vale a do .env —
+   * e, se nem ela existir, a PRIMEIRA senha digitada vira a senha do painel.
+   *
+   * Esse último caso existe porque o servidor desta campanha só recebe `git
+   * pull`: não há como criar variável de ambiente lá sem abrir um terminal, e
+   * sem isso o painel ficaria trancado para o próprio dono. A alternativa —
+   * deixar uma senha escrita no código — seria pior: o repositório é público.
+   *
+   * O preço é claro: enquanto ninguém definiu a senha, quem chegar primeiro
+   * fica com o painel. Por isso o dono precisa entrar assim que publicar.
+   */
   let config = await prisma.configApp.findUnique({ where: { id: 'config' } });
+  let acabouDeDefinir = false;
+
   if (!config?.senhaAdmin) {
-    const senhaInicial = process.env.ADMIN_PASSWORD_HASH;
-    if (senhaInicial) {
-      config = await prisma.configApp.upsert({
-        where: { id: 'config' },
-        update: { senhaAdmin: senhaInicial },
-        create: { id: 'config', senhaAdmin: senhaInicial },
-      });
+    const senhaInicial = process.env.ADMIN_PASSWORD_HASH || senha;
+    acabouDeDefinir = !process.env.ADMIN_PASSWORD_HASH;
+
+    config = await prisma.configApp.upsert({
+      where: { id: 'config' },
+      update: { senhaAdmin: senhaInicial },
+      create: { id: 'config', senhaAdmin: senhaInicial },
+    });
+
+    if (acabouDeDefinir) {
+      console.log('[painel] senha definida no primeiro acesso.');
     }
   }
 
