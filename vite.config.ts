@@ -29,15 +29,12 @@ function apiEPainel(): Plugin {
       // assinatura válida passaria a ser recusada.
       app.use('/api', criarRotasPix());
 
-      // Import tardio: essas rotas puxam o Prisma, que só existe depois do
-      // `prisma generate`. Sem ele o site continua no ar, só o painel fica mudo.
+      // Import tardio, igual à produção: se o painel quebrar, o site continua.
       try {
         const adminRouter = (await import('./server/admin')).default;
-        const pixgoRouter = (await import('./server/pixgo-api')).default;
         app.use('/api/admin', express.json(), adminRouter);
-        app.use('/api/pix', express.json(), pixgoRouter);
       } catch (erro) {
-        console.warn('[painel] API do admin fora do ar (rode `npx prisma generate`):', erro);
+        console.warn('[painel] API do admin fora do ar:', erro);
       }
 
       server.middlewares.use(app);

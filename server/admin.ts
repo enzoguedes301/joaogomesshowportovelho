@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from './banco';
 import * as crypto from 'crypto';
-import * as bcryptjs from 'bcryptjs';
 
 const router = Router();
 

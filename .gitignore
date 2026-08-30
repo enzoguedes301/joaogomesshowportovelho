@@ -9,3 +9,6 @@ coverage/
 # Banco local: contém dados de doadores, nunca vai para o repositório.
 *.db
 *.db-journal
+
+# Banco em arquivo: dados de doadores, nunca vai para o repositorio.
+dados/

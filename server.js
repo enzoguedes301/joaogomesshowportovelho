@@ -8,35 +8,315 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// server/banco.ts
-function cliente() {
-  if (!clientePromessa) {
-    clientePromessa = import("@prisma/client").then(({ PrismaClient }) => new PrismaClient());
+// server/pixgo.ts
+function chave() {
+  const k = process.env.PIXGO_API_KEY;
+  if (!k) {
+    throw new ErroPixGo(
+      503,
+      "SEM_CHAVE",
+      "PIXGO_API_KEY n\xE3o configurada. Copie .env.example para .env e preencha com a chave do dashboard da PixGo."
+    );
   }
-  return clientePromessa;
+  return k;
 }
-var clientePromessa, prisma;
+async function chamar(caminho, init) {
+  const resp = await fetch(`${BASE}${caminho}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": chave(),
+      ...init?.headers ?? {}
+    }
+  });
+  const texto = await resp.text();
+  let corpo = null;
+  try {
+    corpo = texto ? JSON.parse(texto) : null;
+  } catch {
+    throw new ErroPixGo(502, "RESPOSTA_INVALIDA", `A PixGo respondeu ${resp.status} em formato inesperado.`);
+  }
+  if (!resp.ok && resp.status !== 410) {
+    throw new ErroPixGo(
+      resp.status,
+      corpo?.error ?? "ERRO_PIXGO",
+      corpo?.message ?? `A PixGo respondeu ${resp.status}.`
+    );
+  }
+  return { dados: corpo?.data, http: resp.status };
+}
+async function criarCobranca(dados) {
+  try {
+    const { dados: criada } = await chamar("/payment/create", {
+      method: "POST",
+      body: JSON.stringify(dados)
+    });
+    return criada;
+  } catch (e) {
+    const recusaDeCampo = e instanceof ErroPixGo && e.status === 400 && /cpf|obrigat|required|missing|field/i.test(e.message);
+    if (!recusaDeCampo) throw e;
+    const { receiver_cpf, receiver_name, receiver_email, receiver_phone, ...resto } = dados;
+    const { dados: criada } = await chamar("/payment/create", {
+      method: "POST",
+      body: JSON.stringify({
+        ...resto,
+        customer_cpf: receiver_cpf,
+        customer_name: receiver_name,
+        customer_email: receiver_email,
+        customer_phone: receiver_phone
+      })
+    });
+    return criada;
+  }
+}
+async function consultarStatus(paymentId) {
+  const { dados } = await chamar(`/payment/${encodeURIComponent(paymentId)}/status`);
+  return dados;
+}
+async function consultarDetalhes(paymentId) {
+  const { dados } = await chamar(`/payment/${encodeURIComponent(paymentId)}`);
+  return dados;
+}
+function ehFinal(status) {
+  return status !== "pending";
+}
+var BASE, VALOR_MINIMO, VALOR_MAXIMO, ErroPixGo;
+var init_pixgo = __esm({
+  "server/pixgo.ts"() {
+    BASE = "https://pixgo.org/api/v1";
+    VALOR_MINIMO = 10;
+    VALOR_MAXIMO = 6e3;
+    ErroPixGo = class extends Error {
+      constructor(status, codigo, mensagem) {
+        super(mensagem);
+        this.status = status;
+        this.codigo = codigo;
+        this.name = "ErroPixGo";
+      }
+    };
+  }
+});
+
+// server/banco.ts
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+function carregar() {
+  if (cache) return cache;
+  try {
+    const bruto = fs.readFileSync(ARQUIVO, "utf8");
+    const lido = JSON.parse(bruto);
+    cache = { ...structuredClone(VAZIO), ...lido };
+  } catch {
+    cache = structuredClone(VAZIO);
+  }
+  return cache;
+}
+function salvar() {
+  const dados = carregar();
+  fs.mkdirSync(path.dirname(ARQUIVO), { recursive: true });
+  const temporario = `${ARQUIVO}.${process.pid}.tmp`;
+  fs.writeFileSync(temporario, JSON.stringify(dados, null, 2), "utf8");
+  fs.renameSync(temporario, ARQUIVO);
+}
+function agora() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function reidratar(registro) {
+  const saida = { ...registro };
+  for (const campo of ["criadoEm", "atualizadoEm", "entregueEm", "validoAte"]) {
+    if (typeof saida[campo] === "string") saida[campo] = new Date(saida[campo]);
+  }
+  return saida;
+}
+function combina(registro, onde = {}) {
+  return Object.entries(onde).every(([campo, esperado]) => {
+    const atual = registro[campo];
+    if (esperado && typeof esperado === "object" && "gte" in esperado) {
+      return new Date(String(atual)).getTime() >= new Date(esperado.gte).getTime();
+    }
+    return atual === esperado;
+  });
+}
+function tabela(nome) {
+  const linhas = () => carregar()[nome];
+  return {
+    async findMany({ where, orderBy } = {}) {
+      let saida = linhas().filter((r) => combina(r, where));
+      if (orderBy) {
+        const [campo, direcao] = Object.entries(orderBy)[0];
+        saida = [...saida].sort((a, b) => {
+          const x = new Date(String(a[campo])).getTime();
+          const y = new Date(String(b[campo])).getTime();
+          return direcao === "desc" ? y - x : x - y;
+        });
+      }
+      return saida.map((r) => ({ ...reidratar(r), eventos: [] }));
+    },
+    async findUnique({ where }) {
+      const achado = linhas().find((r) => combina(r, where));
+      return achado ? reidratar(achado) : null;
+    },
+    async create({ data }) {
+      const novo = {
+        id: data.id ?? crypto.randomUUID(),
+        criadoEm: agora(),
+        atualizadoEm: agora(),
+        ...data
+      };
+      linhas().push(novo);
+      salvar();
+      return reidratar(novo);
+    },
+    async update({ where, data }) {
+      const alvo = linhas().find((r) => combina(r, where));
+      if (!alvo) throw new Error(`registro n\xE3o encontrado em ${nome}`);
+      Object.assign(alvo, data, { atualizadoEm: agora() });
+      salvar();
+      return reidratar(alvo);
+    },
+    async upsert({ where, update, create }) {
+      const alvo = linhas().find((r) => combina(r, where));
+      if (alvo) {
+        Object.assign(alvo, update, { atualizadoEm: agora() });
+        salvar();
+        return reidratar(alvo);
+      }
+      return this.create({ data: { ...where, ...create } });
+    },
+    async count({ where } = {}) {
+      return linhas().filter((r) => combina(r, where)).length;
+    },
+    async deleteMany({ where } = {}) {
+      const antes = linhas().length;
+      const mantidos = linhas().filter((r) => !combina(r, where));
+      carregar()[nome] = mantidos;
+      salvar();
+      return { count: antes - mantidos.length };
+    }
+  };
+}
+var VAZIO, ARQUIVO, cache, prisma;
 var init_banco = __esm({
   "server/banco.ts"() {
-    clientePromessa = null;
-    prisma = new Proxy(
-      {},
+    VAZIO = { doacao: [], evento: [], webhookPixgo: [], sessaoAdmin: [], configApp: [] };
+    ARQUIVO = path.resolve(process.cwd(), "dados", "doacoes.json");
+    cache = null;
+    prisma = {
+      doacao: tabela("doacao"),
+      evento: tabela("evento"),
+      webhookPixgo: tabela("webhookPixgo"),
+      sessaoAdmin: tabela("sessaoAdmin"),
+      configApp: tabela("configApp")
+    };
+  }
+});
+
+// server/registroDoacoes.ts
+import crypto2 from "node:crypto";
+function traduzirStatus(status) {
+  if (status === "completed") return "pago";
+  if (status === "pending") return "pendente";
+  return "cancelado";
+}
+async function registrarDoacao(nova) {
+  try {
+    await prisma.doacao.create({
+      data: {
+        nome: nova.nome?.trim() || "Doador an\xF4nimo",
+        email: nova.email?.trim() || "",
+        valor: Math.round(nova.valor * 100),
+        pixgoPaymentId: nova.paymentId,
+        pixgoStatus: nova.status,
+        pixKey: nova.copiaECola,
+        status: traduzirStatus(nova.status),
+        entregueEm: null,
+        facebookEventId: null
+      }
+    });
+  } catch (erro) {
+    console.error("[doacoes] falhou ao registrar a doa\xE7\xE3o:", erro);
+  }
+}
+async function atualizarStatusDoacao(paymentId, status) {
+  try {
+    const doacao = await prisma.doacao.findUnique({ where: { pixgoPaymentId: paymentId } });
+    if (!doacao) return;
+    const novo = traduzirStatus(status);
+    if (doacao.status === novo) return;
+    if (doacao.status === "entregue") return;
+    await prisma.doacao.update({
+      where: { pixgoPaymentId: paymentId },
+      data: { status: novo, pixgoStatus: status }
+    });
+    await prisma.evento.create({
+      data: { doacaoId: doacao.id, tipo: novo, dados: JSON.stringify({ pixgoStatus: status }) }
+    });
+    if (novo === "pago") {
+      await enviarFacebook({ ...doacao, status: novo });
+    }
+  } catch (erro) {
+    console.error("[doacoes] falhou ao atualizar o status:", erro);
+  }
+}
+async function registrarWebhook(tipo, dados) {
+  try {
+    await prisma.webhookPixgo.create({ data: { tipo, dados, processado: true } });
+  } catch (erro) {
+    console.error("[doacoes] falhou ao registrar o webhook:", erro);
+  }
+}
+function hash(valor) {
+  const limpo = valor?.trim().toLowerCase();
+  if (!limpo) return void 0;
+  return crypto2.createHash("sha256").update(limpo).digest("hex");
+}
+async function enviarFacebook(doacao) {
+  const pixelId = process.env.FACEBOOK_PIXEL_ID;
+  const token = process.env.FACEBOOK_API_TOKEN;
+  if (!pixelId || !token) return;
+  const eventId = `doacao-${doacao.id}`;
+  try {
+    const resposta = await fetch(
+      `https://graph.facebook.com/v21.0/${pixelId}/events?access_token=${encodeURIComponent(token)}`,
       {
-        get(_alvo, modelo) {
-          return new Proxy(
-            {},
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(8e3),
+        body: JSON.stringify({
+          data: [
             {
-              get(_alvo2, metodo) {
-                return async (...args) => {
-                  const c = await cliente();
-                  return c[modelo][metodo](...args);
-                };
-              }
+              event_name: "Purchase",
+              event_time: Math.floor(Date.now() / 1e3),
+              // Mesmo id do Pixel do navegador: o Facebook junta os dois em vez
+              // de contar duas vendas.
+              event_id: eventId,
+              action_source: "website",
+              event_source_url: process.env.URL_BASE || "https://correntedobeem.online",
+              user_data: {
+                em: hash(doacao.email),
+                ph: hash(String(doacao.whatsapp ?? "").replace(/\D/g, ""))
+              },
+              custom_data: { value: doacao.valor / 100, currency: "BRL" }
             }
-          );
-        }
+          ]
+        })
       }
     );
+    const corpo = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) {
+      console.error("[doacoes] Facebook recusou a compra:", JSON.stringify(corpo));
+      return;
+    }
+    console.log(`[doacoes] compra enviada ao Facebook (${eventId})`);
+    await prisma.doacao.update({ where: { id: doacao.id }, data: { facebookEventId: eventId } });
+  } catch (erro) {
+    console.error("[doacoes] falhou ao enviar a compra ao Facebook:", erro?.message ?? erro);
+  }
+}
+var init_registroDoacoes = __esm({
+  "server/registroDoacoes.ts"() {
+    init_banco();
   }
 });
 
@@ -46,7 +326,7 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router2 } from "express";
-import * as crypto3 from "crypto";
+import * as crypto4 from "crypto";
 var router, verificarSessao, admin_default;
 var init_admin = __esm({
   "server/admin.ts"() {
@@ -85,7 +365,7 @@ var init_admin = __esm({
         return res.status(400).json({ success: false, error: "senha_incorreta", message: "Senha incorreta" });
       }
       const horas = Number(process.env.ADMIN_SESSION_HOURS) || 12;
-      const token = crypto3.randomBytes(32).toString("hex");
+      const token = crypto4.randomBytes(32).toString("hex");
       const validoAte = new Date(Date.now() + horas * 60 * 60 * 1e3);
       await prisma.sessaoAdmin.create({
         data: { token, validoAte, papel: "dono" }
@@ -200,154 +480,66 @@ var init_admin = __esm({
   }
 });
 
-// server/pixgo-api.ts
-var pixgo_api_exports = {};
-__export(pixgo_api_exports, {
-  default: () => pixgo_api_default
+// server/detectorPagamento.ts
+var detectorPagamento_exports = {};
+__export(detectorPagamento_exports, {
+  iniciarDetectorDePagamento: () => iniciarDetectorDePagamento
 });
-import { Router as Router3 } from "express";
-import axios from "axios";
-async function enviarFacebookPixel(doacao) {
-  try {
-    await axios.post(
-      `https://graph.instagram.com/v18.0/${FACEBOOK_PIXEL_ID}/events`,
-      {
-        data: [
-          {
-            event_name: "Purchase",
-            event_time: Math.floor(Date.now() / 1e3),
-            user_data: {
-              em: doacao.email,
-              ph: doacao.whatsapp
-            },
-            custom_data: {
-              value: doacao.valor / 100,
-              currency: "BRL"
-            }
-          }
-        ]
-      },
-      { params: { access_token: FACEBOOK_TOKEN } }
-    );
-  } catch (erro) {
-    console.error("Erro Facebook:", erro);
+function minutosDesde(data) {
+  return (Date.now() - new Date(data).getTime()) / 6e4;
+}
+async function rodada() {
+  const pendentes = await prisma.doacao.findMany({ where: { status: "pendente" } });
+  for (const doacao of pendentes) {
+    const paymentId = doacao.pixgoPaymentId;
+    if (!paymentId) continue;
+    const idade = minutosDesde(doacao.criadoEm);
+    if (idade > IDADE_MAXIMA_MINUTOS) {
+      jaVerificadas.delete(paymentId);
+      continue;
+    }
+    const feitas = jaVerificadas.get(paymentId) ?? 0;
+    const devidas = MOMENTOS_MINUTOS.filter((m) => idade >= m).length;
+    if (devidas <= feitas) continue;
+    try {
+      const status = await consultarStatus(paymentId);
+      jaVerificadas.set(paymentId, feitas + 1);
+      if (status.status !== "pending") {
+        await atualizarStatusDoacao(paymentId, status.status);
+        jaVerificadas.delete(paymentId);
+        if (status.status === "completed") {
+          console.log(`[detector] pagamento confirmado: ${paymentId}`);
+        }
+      }
+    } catch (erro) {
+      console.error(`[detector] falhou ao consultar ${paymentId}:`, erro?.message ?? erro);
+    }
   }
 }
-var router2, PIXGO_API_KEY, FACEBOOK_PIXEL_ID, FACEBOOK_TOKEN, pixgo_api_default;
-var init_pixgo_api = __esm({
-  "server/pixgo-api.ts"() {
+function iniciarDetectorDePagamento() {
+  if (!process.env.PIXGO_API_KEY) return;
+  const timer = setInterval(() => {
+    void rodada().catch((erro) => console.error("[detector] rodada falhou:", erro));
+  }, INTERVALO_MS);
+  timer.unref?.();
+  console.log("Detector de pagamento ligado (a PixGo desta conta n\xE3o oferece webhook).");
+}
+var MOMENTOS_MINUTOS, IDADE_MAXIMA_MINUTOS, INTERVALO_MS, jaVerificadas;
+var init_detectorPagamento = __esm({
+  "server/detectorPagamento.ts"() {
+    init_pixgo();
     init_banco();
-    router2 = Router3();
-    PIXGO_API_KEY = process.env.PIXGO_API_KEY || "";
-    FACEBOOK_PIXEL_ID = process.env.FACEBOOK_PIXEL_ID || "";
-    FACEBOOK_TOKEN = process.env.FACEBOOK_API_TOKEN || "";
-    router2.post("/webhook", async (req, res) => {
-      try {
-        const { data } = req.body;
-        await prisma.webhookPixgo.create({
-          data: {
-            tipo: data.type,
-            dados: JSON.stringify(data),
-            processado: false
-          }
-        });
-        if (data.type === "charge.completed" || data.type === "charge.updated") {
-          const pixgoPaymentId = data.id || data.charge_id;
-          const doacao = await prisma.doacao.findUnique({
-            where: { pixgoPaymentId }
-          });
-          if (doacao && doacao.status === "pendente") {
-            await prisma.doacao.update({
-              where: { id: doacao.id },
-              data: {
-                status: "pago",
-                pixgoStatus: "completed",
-                entregueEm: /* @__PURE__ */ new Date()
-              }
-            });
-            await prisma.evento.create({
-              data: {
-                doacaoId: doacao.id,
-                tipo: "pago",
-                dados: JSON.stringify({ pixgoStatus: data.status })
-              }
-            });
-            await enviarFacebookPixel(doacao);
-          }
-        }
-        return res.json({ success: true });
-      } catch (erro) {
-        console.error("Erro webhook:", erro);
-        return res.status(500).json({ success: false });
-      }
-    });
-    router2.post("/criar-doacao", async (req, res) => {
-      try {
-        const { nome, email, whatsapp, valor, mensagem } = req.body;
-        if (!nome || !email || !valor) {
-          return res.status(400).json({
-            success: false,
-            error: "dados_incompletos",
-            message: "Nome, email e valor s\xE3o obrigat\xF3rios"
-          });
-        }
-        const doacao = await prisma.doacao.create({
-          data: {
-            nome,
-            email,
-            whatsapp,
-            valor: Math.round(valor * 100),
-            mensagem,
-            status: "pendente"
-          }
-        });
-        const cobranca = await axios.post(
-          "https://api.pixgo.com/charges",
-          {
-            amount: valor,
-            description: `Doa\xE7\xE3o de ${nome}`,
-            customer: {
-              email,
-              name: nome,
-              phone: whatsapp
-            },
-            metadata: { doacaoId: doacao.id }
-          },
-          {
-            headers: {
-              "Authorization": `Bearer ${PIXGO_API_KEY}`,
-              "Content-Type": "application/json"
-            }
-          }
-        );
-        await prisma.doacao.update({
-          where: { id: doacao.id },
-          data: {
-            pixgoPaymentId: cobranca.data.id,
-            pixKey: cobranca.data.pix_key
-          }
-        });
-        return res.json({
-          success: true,
-          data: {
-            doacaoId: doacao.id,
-            pixKey: cobranca.data.pix_key,
-            qrCode: cobranca.data.qr_code,
-            valor: doacao.valor
-          }
-        });
-      } catch (erro) {
-        console.error("Erro:", erro);
-        return res.status(500).json({ success: false, error: "erro_ao_criar" });
-      }
-    });
-    pixgo_api_default = router2;
+    init_registroDoacoes();
+    MOMENTOS_MINUTOS = [2, 4, 7, 12, 20, 30];
+    IDADE_MAXIMA_MINUTOS = 35;
+    INTERVALO_MS = 6e4;
+    jaVerificadas = /* @__PURE__ */ new Map();
   }
 });
 
 // server/index.ts
-import fs from "node:fs";
-import path from "node:path";
+import fs2 from "node:fs";
+import path2 from "node:path";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import compression from "compression";
@@ -392,207 +584,10 @@ var PAGINA_MANUTENCAO = `<!doctype html>
 `;
 
 // server/rotasPix.ts
-import crypto2 from "node:crypto";
+init_pixgo();
+init_registroDoacoes();
+import crypto3 from "node:crypto";
 import express, { Router } from "express";
-
-// server/pixgo.ts
-var BASE = "https://pixgo.org/api/v1";
-var VALOR_MINIMO = 10;
-var VALOR_MAXIMO = 6e3;
-var ErroPixGo = class extends Error {
-  constructor(status, codigo, mensagem) {
-    super(mensagem);
-    this.status = status;
-    this.codigo = codigo;
-    this.name = "ErroPixGo";
-  }
-};
-function chave() {
-  const k = process.env.PIXGO_API_KEY;
-  if (!k) {
-    throw new ErroPixGo(
-      503,
-      "SEM_CHAVE",
-      "PIXGO_API_KEY n\xE3o configurada. Copie .env.example para .env e preencha com a chave do dashboard da PixGo."
-    );
-  }
-  return k;
-}
-async function chamar(caminho, init) {
-  const resp = await fetch(`${BASE}${caminho}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": chave(),
-      ...init?.headers ?? {}
-    }
-  });
-  const texto = await resp.text();
-  let corpo = null;
-  try {
-    corpo = texto ? JSON.parse(texto) : null;
-  } catch {
-    throw new ErroPixGo(502, "RESPOSTA_INVALIDA", `A PixGo respondeu ${resp.status} em formato inesperado.`);
-  }
-  if (!resp.ok && resp.status !== 410) {
-    throw new ErroPixGo(
-      resp.status,
-      corpo?.error ?? "ERRO_PIXGO",
-      corpo?.message ?? `A PixGo respondeu ${resp.status}.`
-    );
-  }
-  return { dados: corpo?.data, http: resp.status };
-}
-async function criarCobranca(dados) {
-  try {
-    const { dados: criada } = await chamar("/payment/create", {
-      method: "POST",
-      body: JSON.stringify(dados)
-    });
-    return criada;
-  } catch (e) {
-    const recusaDeCampo = e instanceof ErroPixGo && e.status === 400 && /cpf|obrigat|required|missing|field/i.test(e.message);
-    if (!recusaDeCampo) throw e;
-    const { receiver_cpf, receiver_name, receiver_email, receiver_phone, ...resto } = dados;
-    const { dados: criada } = await chamar("/payment/create", {
-      method: "POST",
-      body: JSON.stringify({
-        ...resto,
-        customer_cpf: receiver_cpf,
-        customer_name: receiver_name,
-        customer_email: receiver_email,
-        customer_phone: receiver_phone
-      })
-    });
-    return criada;
-  }
-}
-async function consultarStatus(paymentId) {
-  const { dados } = await chamar(`/payment/${encodeURIComponent(paymentId)}/status`);
-  return dados;
-}
-async function consultarDetalhes(paymentId) {
-  const { dados } = await chamar(`/payment/${encodeURIComponent(paymentId)}`);
-  return dados;
-}
-function ehFinal(status) {
-  return status !== "pending";
-}
-
-// server/registroDoacoes.ts
-import crypto from "node:crypto";
-var prismaPromessa = null;
-async function banco() {
-  if (!prismaPromessa) {
-    prismaPromessa = import("@prisma/client").then(({ PrismaClient }) => new PrismaClient()).catch((erro) => {
-      console.warn("[doacoes] banco indispon\xEDvel, painel n\xE3o ser\xE1 alimentado:", erro?.message ?? erro);
-      return null;
-    });
-  }
-  return prismaPromessa;
-}
-function traduzirStatus(status) {
-  if (status === "completed") return "pago";
-  if (status === "pending") return "pendente";
-  return "cancelado";
-}
-async function registrarDoacao(nova) {
-  try {
-    const db = await banco();
-    if (!db) return;
-    await db.doacao.create({
-      data: {
-        nome: nova.nome?.trim() || "Doador an\xF4nimo",
-        email: nova.email?.trim() || "",
-        valor: Math.round(nova.valor * 100),
-        pixgoPaymentId: nova.paymentId,
-        pixgoStatus: nova.status,
-        pixKey: nova.copiaECola,
-        status: traduzirStatus(nova.status)
-      }
-    });
-  } catch (erro) {
-    console.error("[doacoes] falhou ao registrar a doa\xE7\xE3o:", erro);
-  }
-}
-async function atualizarStatusDoacao(paymentId, status) {
-  try {
-    const db = await banco();
-    if (!db) return;
-    const doacao = await db.doacao.findUnique({ where: { pixgoPaymentId: paymentId } });
-    if (!doacao) return;
-    const novo = traduzirStatus(status);
-    if (doacao.status === novo) return;
-    if (doacao.status === "entregue") return;
-    await db.doacao.update({
-      where: { id: doacao.id },
-      data: { status: novo, pixgoStatus: status }
-    });
-    await db.evento.create({
-      data: {
-        doacaoId: doacao.id,
-        tipo: novo,
-        dados: JSON.stringify({ pixgoStatus: status })
-      }
-    });
-    if (novo === "pago") {
-      await enviarFacebook({ ...doacao, status: novo });
-    }
-  } catch (erro) {
-    console.error("[doacoes] falhou ao atualizar o status:", erro);
-  }
-}
-async function registrarWebhook(tipo, dados) {
-  try {
-    const db = await banco();
-    if (!db) return;
-    await db.webhookPixgo.create({ data: { tipo, dados, processado: true } });
-  } catch (erro) {
-    console.error("[doacoes] falhou ao registrar o webhook:", erro);
-  }
-}
-function hash(valor) {
-  const limpo = valor?.trim().toLowerCase();
-  if (!limpo) return void 0;
-  return crypto.createHash("sha256").update(limpo).digest("hex");
-}
-async function enviarFacebook(doacao) {
-  const pixelId = process.env.FACEBOOK_PIXEL_ID;
-  const token = process.env.FACEBOOK_API_TOKEN;
-  if (!pixelId || !token) return;
-  try {
-    const { default: axios2 } = await import("axios");
-    const eventId = `doacao-${doacao.id}`;
-    await axios2.post(
-      `https://graph.facebook.com/v21.0/${pixelId}/events`,
-      {
-        data: [
-          {
-            event_name: "Purchase",
-            event_time: Math.floor(Date.now() / 1e3),
-            // Mesmo id do Pixel do navegador: o Facebook junta os dois em vez de contar duas vendas.
-            event_id: eventId,
-            action_source: "website",
-            user_data: {
-              em: hash(doacao.email),
-              ph: hash(doacao.whatsapp?.replace(/\D/g, ""))
-            },
-            custom_data: { value: doacao.valor / 100, currency: "BRL" }
-          }
-        ]
-      },
-      { params: { access_token: token }, timeout: 8e3 }
-    );
-    const db = await banco();
-    if (db) {
-      await db.doacao.update({ where: { id: doacao.id }, data: { facebookEventId: eventId } });
-    }
-  } catch (erro) {
-    console.error("[doacoes] falhou ao enviar o evento ao Facebook:", erro?.message ?? erro);
-  }
-}
-
-// server/rotasPix.ts
 var registros = /* @__PURE__ */ new Map();
 function documentoValido(doc) {
   const d = doc.replace(/\D/g, "");
@@ -627,9 +622,9 @@ var janelas = /* @__PURE__ */ new Map();
 var LIMITE = 12;
 var JANELA_MS = 10 * 60 * 1e3;
 function passouDoLimite(ip) {
-  const agora = Date.now();
-  const recentes = (janelas.get(ip) ?? []).filter((t) => agora - t < JANELA_MS);
-  recentes.push(agora);
+  const agora2 = Date.now();
+  const recentes = (janelas.get(ip) ?? []).filter((t) => agora2 - t < JANELA_MS);
+  recentes.push(agora2);
   janelas.set(ip, recentes);
   return recentes.length > LIMITE;
 }
@@ -649,10 +644,10 @@ function criarRotasPix() {
     const assinatura = String(req.header("x-webhook-signature") ?? "");
     const timestamp = String(req.header("x-webhook-timestamp") ?? "");
     if (segredo) {
-      const esperada = crypto2.createHmac("sha256", segredo).update(`${timestamp}.${bruto}`).digest("hex");
+      const esperada = crypto3.createHmac("sha256", segredo).update(`${timestamp}.${bruto}`).digest("hex");
       const a = Buffer.from(esperada, "hex");
       const b = Buffer.from(assinatura, "hex");
-      if (a.length !== b.length || !crypto2.timingSafeEqual(a, b)) {
+      if (a.length !== b.length || !crypto3.timingSafeEqual(a, b)) {
         res.status(401).json({ erro: "ASSINATURA_INVALIDA" });
         return;
       }
@@ -716,7 +711,7 @@ function criarRotasPix() {
       res.status(400).json({ erro: "NOME_INVALIDO", mensagem: "O nome deve ter de 2 a 100 caracteres." });
       return;
     }
-    const externalId = `vk-${campanha || "campanha"}-${Date.now().toString(36)}-${crypto2.randomBytes(3).toString("hex")}`.slice(0, 50);
+    const externalId = `vk-${campanha || "campanha"}-${Date.now().toString(36)}-${crypto3.randomBytes(3).toString("hex")}`.slice(0, 50);
     try {
       const cobranca = await criarCobranca({
         amount: Number(valor.toFixed(2)),
@@ -803,7 +798,7 @@ function criarRotasPix() {
 }
 
 // server/index.ts
-var raiz = path.dirname(fileURLToPath(import.meta.url));
+var raiz = path2.dirname(fileURLToPath(import.meta.url));
 var app = express2();
 var porta = Number(process.env.PORT ?? 3100);
 app.set("trust proxy", 1);
@@ -818,33 +813,28 @@ if (EM_MANUTENCAO) {
   app.use("/api", painel);
   void (async () => {
     try {
-      const [{ default: adminRouter }, { default: pixgoRouter }] = await Promise.all([
-        Promise.resolve().then(() => (init_admin(), admin_exports)),
-        Promise.resolve().then(() => (init_pixgo_api(), pixgo_api_exports))
-      ]);
+      const { default: adminRouter } = await Promise.resolve().then(() => (init_admin(), admin_exports));
       painel.use("/admin", express2.json(), adminRouter);
-      painel.use("/pix", express2.json(), pixgoRouter);
       console.log("Painel admin no ar em /admin");
+      const { iniciarDetectorDePagamento: iniciarDetectorDePagamento2 } = await Promise.resolve().then(() => (init_detectorPagamento(), detectorPagamento_exports));
+      iniciarDetectorDePagamento2();
     } catch (erro) {
-      console.error(
-        "Painel admin fora do ar (rode `npm install` e `npx prisma generate`). O site segue normal.",
-        erro
-      );
+      console.error("Painel admin fora do ar. O site e as doa\xE7\xF5es seguem normais.", erro);
     }
   })();
-  const acharPasta = (nome) => [path.resolve(raiz, nome), path.resolve(raiz, "..", nome)].find((caminho) => fs.existsSync(caminho)) ?? path.resolve(raiz, "..", nome);
+  const acharPasta = (nome) => [path2.resolve(raiz, nome), path2.resolve(raiz, "..", nome)].find((caminho) => fs2.existsSync(caminho)) ?? path2.resolve(raiz, "..", nome);
   const dist = acharPasta("dist");
   app.use("/admin", express2.static(acharPasta("publico-admin"), { index: "admin.html" }));
   app.use(express2.static(dist, {
     maxAge: "1y",
     etag: false,
-    setHeaders(res, path2) {
-      if (path2.endsWith(".html")) {
+    setHeaders(res, path3) {
+      if (path3.endsWith(".html")) {
         res.setHeader("Cache-Control", "public, max-age=3600, must-revalidate");
       }
     }
   }));
-  app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+  app.get("*", (_req, res) => res.sendFile(path2.join(dist, "index.html")));
 }
 app.listen(porta, () => {
   console.log(`Doar \xE9 Amor no ar em http://localhost:${porta}`);

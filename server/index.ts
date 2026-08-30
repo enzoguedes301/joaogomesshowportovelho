@@ -47,26 +47,21 @@ if (EM_MANUTENCAO) {
   app.use('/api', painel);
 
   /*
-   * O painel entra por import tardio, e não no topo do arquivo, porque ele
-   * depende do Prisma. Com import estático, um servidor sem `npm install` ou
-   * sem `prisma generate` nem chega a subir: o site inteiro sai do ar por causa
-   * de uma tela de administração. Assim o pior caso vira "o painel não abre",
-   * enquanto a campanha continua recebendo doação.
+   * O painel entra por import tardio, e não no topo do arquivo. Assim, se algo
+   * nele quebrar, o pior caso é "o painel não abre" — e não o site inteiro fora
+   * do ar, que foi o que já aconteceu quando um import do topo puxou uma
+   * biblioteca que não estava instalada no servidor.
    */
   void (async () => {
     try {
-      const [{ default: adminRouter }, { default: pixgoRouter }] = await Promise.all([
-        import('./admin'),
-        import('./pixgo-api'),
-      ]);
+      const { default: adminRouter } = await import('./admin');
       painel.use('/admin', express.json(), adminRouter);
-      painel.use('/pix', express.json(), pixgoRouter);
       console.log('Painel admin no ar em /admin');
+
+      const { iniciarDetectorDePagamento } = await import('./detectorPagamento');
+      iniciarDetectorDePagamento();
     } catch (erro) {
-      console.error(
-        'Painel admin fora do ar (rode `npm install` e `npx prisma generate`). O site segue normal.',
-        erro,
-      );
+      console.error('Painel admin fora do ar. O site e as doações seguem normais.', erro);
     }
   })();
 
