@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Doacao {
+  id                String   @id @default(cuid())
+
+  // Cliente
+  nome              String
+  email             String
+  whatsapp          String?
+
+  // Doação
+  valor             Int      // em centavos
+  mensagem          String?
+
+  // Pixgo
+  pixgoPaymentId    String?  @unique
+  pixgoStatus       String   @default("pending") // pending | completed | failed
+  pixKey            String?  // chave PIX
+
+  // Facebook
+  facebookEventId   String?
+
+  // Status
+  status            String   @default("pendente") // pendente | pago | entregue | cancelado
+  entregueEm        DateTime?
+
+  // Timestamps
+  criadoEm          DateTime @default(now())
+  atualizadoEm      DateTime @updatedAt
+
+  // Eventos
+  eventos           Evento[]
+
+  @@index([email])
+  @@index([pixgoPaymentId])
+  @@index([status])
+  @@index([criadoEm])
+}
+
+model Evento {
+  id        String   @id @default(cuid())
+  doacaoId  String
+  doacao    Doacao   @relation(fields: [doacaoId], references: [id], onDelete: Cascade)
+
+  tipo      String   // pago | entregue | cancelado | email_enviado | etc
+  dados     String?  // JSON com detalhes
+
+  criadoEm  DateTime @default(now())
+
+  @@index([doacaoId])
+  @@index([tipo])
+}
+
+model WebhookPixgo {
+  id        String   @id @default(cuid())
+  tipo      String   // charge.created | charge.updated | etc
+  dados     String   // JSON bruto
+  processado Boolean  @default(false)
+  erro      String?
+
+  criadoEm  DateTime @default(now())
+
+  @@index([tipo])
+  @@index([processado])
+}
+
+model SessaoAdmin {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  papel     String   @default("dono")
+  validoAte DateTime
+
+  criadoEm  DateTime @default(now())
+
+  @@index([token])
+}
+
+model ConfigApp {
+  id            String  @id @default("config")
+
+  pixgoApiKey   String?
+  facebookPixelId String?
+  facebookTokenApi String?
+  senhaAdmin    String?
+
+  urlBase       String  @default("http://localhost:3000")
+
+  atualizadoEm  DateTime @updatedAt
+}
