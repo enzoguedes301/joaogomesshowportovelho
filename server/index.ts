@@ -6,6 +6,8 @@ import compression from 'compression';
 import express from 'express';
 import { EM_MANUTENCAO, PAGINA_MANUTENCAO } from './manutencao';
 import { criarRotasPix } from './rotasPix';
+import adminRouter from './admin';
+import pixgoRouter from './pixgo-api';
 
 /**
  * Servidor de produção: serve o `dist/` do Vite e as rotas de PIX.
@@ -34,7 +36,16 @@ if (EM_MANUTENCAO) {
       .send(PAGINA_MANUTENCAO);
   });
 } else {
+  // Middleware para JSON
+  app.use(express.json());
+
+  // Rotas da API
   app.use('/api', criarRotasPix());
+  app.use('/api/admin', adminRouter);
+  app.use('/api/pix', pixgoRouter);
+
+  // Servir painel admin
+  app.use('/admin', express.static(path.resolve(raiz, '..', 'publico-admin')));
 
   // O bundle de produção (`npm run build`) fica na raiz do projeto, ao lado do
   // `dist/`; rodando pelo fonte, este arquivo está um nível abaixo, em `server/`.
